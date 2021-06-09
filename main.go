@@ -87,7 +87,13 @@ func main() {
 		return
 	}
 
-	pctx, pcancel := chromedp.NewContext(context.Background())
+	copts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("ignore-certificate-errors", true),
+	)
+	ectx, ecancel := chromedp.NewExecAllocator(context.Background(), copts...)
+	defer ecancel()
+
+	pctx, pcancel := chromedp.NewContext(ectx)
 	defer pcancel()
 
 	// start the browser to ensure we end up making new tabs in an
