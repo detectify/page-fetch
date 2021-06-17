@@ -34,6 +34,7 @@ func init() {
 			"  -i, --include <string>    Only save requests matching the provided string (can be specified multiple times)",
 			"  -j, --javascript <string> JavaScript to run on each page",
 			"  -o, --output <string>     Output directory name (default 'out')",
+			"  -p, --proxy <string>      Use proxy on given URL",
 			"  -w, --overwrite           Overwrite output files when they already exist",
 			"      --no-third-party      Do not save responses to requests on third-party domains",
 			"      --third-party         Only save responses to requests on third-party domains",
@@ -53,6 +54,7 @@ type options struct {
 	output         string
 	concurrency    int
 	js             string
+	proxy          string
 }
 
 func main() {
@@ -80,6 +82,9 @@ func main() {
 	flag.StringVar(&opts.js, "j", "", "")
 	flag.StringVar(&opts.js, "javascript", "", "")
 
+	flag.StringVar(&opts.proxy, "p", "", "")
+	flag.StringVar(&opts.proxy, "proxy", "", "")
+
 	flag.Parse()
 
 	if opts.thirdPartyOnly && opts.noThirdParty {
@@ -90,6 +95,17 @@ func main() {
 	copts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("ignore-certificate-errors", true),
 	)
+
+	if opts.proxy != "" {
+		_, err := url.ParseRequestURI(opts.proxy)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "invalid proxy URL")
+			return
+		}
+
+		copts = append(copts, chromedp.ProxyServer(opts.proxy))
+	}
+
 	ectx, ecancel := chromedp.NewExecAllocator(context.Background(), copts...)
 	defer ecancel()
 
