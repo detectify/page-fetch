@@ -98,6 +98,7 @@ Options:
   -i, --include <string>    Only save requests matching the provided string (can be specified multiple times)
   -j, --javascript <string> JavaScript to run on each page
   -o, --output <string>     Output directory name (default 'out')
+  -p, --proxy <string>      Use proxy on given URL
   -w, --overwrite           Overwrite output files when they already exist
       --no-third-party      Do not save responses to requests on third-party domains
       --third-party         Only save responses to requests on third-party domains
@@ -163,6 +164,15 @@ example/example.com/index.meta
 ```
 
 The directory is created if it does not already exist.
+
+### Using a proxy
+
+The `-p` / `--proxy` option can be used to specify a proxy for all requests to use. For example, to use the Burp Suite
+proxy with default settings, you could run:
+
+```
+▶ echo https://example.com | page-fetch --proxy http://localhost:8080
+```
 
 ### Overwriting files
 
