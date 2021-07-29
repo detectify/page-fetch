@@ -30,6 +30,7 @@ func init() {
 			"",
 			"Options:",
 			"  -c, --concurrency <int>   Concurrency Level (default 2)",
+			"  -d, --delay <int>         Milliseconds to wait between requests (default 0)",
 			"  -e, --exclude <string>    Do not save responses matching the provided string (can be specified multiple times)",
 			"  -i, --include <string>    Only save requests matching the provided string (can be specified multiple times)",
 			"  -j, --javascript <string> JavaScript to run on each page",
@@ -53,6 +54,7 @@ type options struct {
 	overwrite      bool
 	output         string
 	concurrency    int
+	delay          int
 	js             string
 	proxy          string
 }
@@ -78,6 +80,9 @@ func main() {
 
 	flag.IntVar(&opts.concurrency, "concurrency", 2, "")
 	flag.IntVar(&opts.concurrency, "c", 2, "")
+
+	flag.IntVar(&opts.delay, "delay", 0, "")
+	flag.IntVar(&opts.delay, "d", 0, "")
 
 	flag.StringVar(&opts.js, "j", "", "")
 	flag.StringVar(&opts.js, "javascript", "", "")
@@ -156,6 +161,11 @@ func main() {
 
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "run error: %s\n", err)
+				}
+
+				if opts.delay > 0 {
+					sleepDuration := time.Duration(opts.delay)
+					time.Sleep(sleepDuration * time.Millisecond)
 				}
 
 				cancel()
