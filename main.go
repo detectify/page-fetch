@@ -333,6 +333,11 @@ func makeListener(ctx context.Context, requestURL string, opts options) func(int
 					return
 				}
 
+				body := "none"
+				if ev.Request.HasPostData {
+					body = ev.Request.PostData
+				}
+
 				err := chromedp.Run(
 					ctx,
 					chromedp.ActionFunc(func(ctx context.Context) error {
@@ -357,7 +362,7 @@ func makeListener(ctx context.Context, requestURL string, opts options) func(int
 						}
 
 						// Log the request
-						fmt.Printf("%s %s %d %s\n", ev.Request.Method, ev.Request.URL, ev.ResponseStatusCode, contentType)
+						fmt.Printf("%s %s %d %s %s\n", ev.Request.Method, ev.Request.URL, ev.ResponseStatusCode, strings.ReplaceAll(contentType, " ", ""), url.QueryEscape(body)) // replace spaces for easier awk
 
 						return nil
 					}),
