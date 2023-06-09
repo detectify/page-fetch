@@ -8,7 +8,7 @@ page-fetch is a tool for researchers that lets you:
 
 ## Installation
 
-page-fetch is written with Go and can be installed with `go get`:
+page-fetch is written with Go and can be installed with `go install`:
 
 ```
 ▶ go install github.com/detectify/page-fetch@latest
