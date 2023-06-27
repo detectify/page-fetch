@@ -6,7 +6,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -218,7 +217,7 @@ func saveResponse(requestURL string, data []byte, output string, overwrite bool)
 		i++
 	}
 
-	return path, ioutil.WriteFile(path, data, 0644)
+	return path, os.WriteFile(path, data, 0644)
 
 }
 
@@ -281,7 +280,7 @@ func saveMeta(path string, parentURL string, ev *fetch.EventRequestPaused) error
 		fmt.Fprintf(b, "< %s: %s\n", h.Name, h.Value)
 	}
 
-	return ioutil.WriteFile(path, b.Bytes(), 0644)
+	return os.WriteFile(path, b.Bytes(), 0644)
 }
 
 func shouldSave(ev *fetch.EventRequestPaused, requestURL string, opts options) bool {
