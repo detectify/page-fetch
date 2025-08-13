@@ -26,22 +26,22 @@ func init() {
 			"Request URLs using headless Chrome, storing the results",
 			"",
 			"Usage:",
-			"  page-fetch [options] < urls.txt",
+			" page-fetch [options] < urls.txt",
 			"",
 			"Options:",
-			"  -c, --concurrency <int>   Concurrency Level (default 2)",
-			"  -d, --delay <int>         Milliseconds to wait between requests (default 0)",
-			"  -e, --exclude <string>    Do not save responses matching the provided string (can be specified multiple times)",
-			"  -i, --include <string>    Only save requests matching the provided string (can be specified multiple times)",
-			"  -j, --javascript <string> JavaScript to run on each page",
-			"  -o, --output <string>     Output directory name (default 'out')",
-			"  -p, --proxy <string>      Use proxy on given URL",
-			"  -w, --overwrite           Overwrite output files when they already exist",
-			"      --no-third-party      Do not save responses to requests on third-party domains",
-			"      --third-party         Only save responses to requests on third-party domains",
+			" -c, --concurrency <int> Concurrency Level (default 2)",
+			" -d, --delay <int> Milliseconds to wait between requests (default 0)",
+			" -e, --exclude <string> Do not save responses matching the provided string (can be specified multiple times)",
+			" -i, --include <string> Only save requests matching the provided string (can be specified multiple times)",
+			" -j, --javascript <string> JavaScript to run on each page",
+			" -o, --output <string> Output directory name (default 'out')",
+			" -p, --proxy <string> Use proxy on given URL",
+			" -t, --timeout <int> Timeout in seconds for each request (default 10)",
+			" -w, --overwrite Overwrite output files when they already exist",
+			" --no-third-party Do not save responses to requests on third-party domains",
+			" --third-party Only save responses to requests on third-party domains",
 			"",
 		}
-
 		fmt.Fprint(os.Stderr, strings.Join(h, "\n"))
 	}
 }
@@ -57,39 +57,31 @@ type options struct {
 	delay          int
 	js             string
 	proxy          string
+	timeout        int
 }
 
 func main() {
-
 	opts := options{}
-
 	flag.Var(&opts.includes, "include", "")
 	flag.Var(&opts.includes, "i", "")
-
 	flag.Var(&opts.excludes, "exclude", "")
 	flag.Var(&opts.excludes, "e", "")
-
 	flag.BoolVar(&opts.thirdPartyOnly, "third-party", false, "")
 	flag.BoolVar(&opts.noThirdParty, "no-third-party", false, "")
-
 	flag.BoolVar(&opts.overwrite, "overwrite", false, "")
 	flag.BoolVar(&opts.overwrite, "w", false, "")
-
 	flag.StringVar(&opts.output, "output", "out", "")
 	flag.StringVar(&opts.output, "o", "out", "")
-
 	flag.IntVar(&opts.concurrency, "concurrency", 2, "")
 	flag.IntVar(&opts.concurrency, "c", 2, "")
-
 	flag.IntVar(&opts.delay, "delay", 0, "")
 	flag.IntVar(&opts.delay, "d", 0, "")
-
 	flag.StringVar(&opts.js, "j", "", "")
 	flag.StringVar(&opts.js, "javascript", "", "")
-
 	flag.StringVar(&opts.proxy, "p", "", "")
 	flag.StringVar(&opts.proxy, "proxy", "", "")
-
+	flag.IntVar(&opts.timeout, "timeout", 10, "")
+	flag.IntVar(&opts.timeout, "t", 10, "")
 	flag.Parse()
 
 	if opts.thirdPartyOnly && opts.noThirdParty {
@@ -100,24 +92,21 @@ func main() {
 	copts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("ignore-certificate-errors", true),
 	)
-
 	if opts.proxy != "" {
 		_, err := url.ParseRequestURI(opts.proxy)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "invalid proxy URL")
 			return
 		}
-
 		copts = append(copts, chromedp.ProxyServer(opts.proxy))
 	}
-
 	// bypass chrome headless detection (updated flags and UA)
 	copts = append(copts,
 		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"),
 		chromedp.WindowSize(1920, 1080),
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
-		chromedp.Flag("headless", "new"),  // Use new headless mode
+		chromedp.Flag("headless", "new"), // Use new headless mode
 	)
 
 	ectx, ecancel := chromedp.NewExecAllocator(context.Background(), copts...)
@@ -135,7 +124,6 @@ func main() {
 	}
 
 	sc := bufio.NewScanner(os.Stdin)
-
 	var wg sync.WaitGroup
 	jobs := make(chan string)
 
@@ -143,19 +131,15 @@ func main() {
 		wg.Add(1)
 		go func() {
 			for requestURL := range jobs {
-
-				ctx, cancel := context.WithTimeout(pctx, time.Second*10)
+				ctx, cancel := context.WithTimeout(pctx, time.Duration(opts.timeout)*time.Second)
 				ctx, _ = chromedp.NewContext(ctx)
-
 				// we want to intercept all requests, so we add a listener here
 				chromedp.ListenTarget(ctx, makeListener(ctx, requestURL, opts))
-
 				// default to evaluating "false" to avoid errant errors
 				jsCode := opts.js
 				if jsCode == "" {
 					jsCode = "false"
 				}
-
 				var jsOutput interface{}
 				err := chromedp.Run(
 					ctx,
@@ -163,46 +147,39 @@ func main() {
 					chromedp.Navigate(requestURL),
 					chromedp.EvaluateAsDevTools(jsCode, &jsOutput),
 				)
-
 				if opts.js != "" {
 					fmt.Printf("JS (%s): %v\n", requestURL, jsOutput)
 				}
-
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "run error: %s\n", err)
 				}
-
 				if opts.delay > 0 {
 					sleepDuration := time.Duration(opts.delay)
 					time.Sleep(sleepDuration * time.Millisecond)
 				}
-
 				cancel()
 			}
 			wg.Done()
 		}()
 	}
+
 	for sc.Scan() {
 		jobs <- sc.Text()
 	}
 	close(jobs)
-
 	wg.Wait()
 }
 
 func saveResponse(requestURL string, data []byte, output string, overwrite bool) (string, error) {
-
 	path, err := makeFilepath(output, requestURL)
 	if err != nil {
 		return "", err
 	}
-
 	dir := filepath.Dir(path)
 	err = os.MkdirAll(dir, 0755)
 	if err != nil {
 		return "", err
 	}
-
 	i := 1
 	for !overwrite {
 		// should probably do something like get all the files
@@ -213,13 +190,10 @@ func saveResponse(requestURL string, data []byte, output string, overwrite bool)
 		if _, err := os.Stat(path); err != nil {
 			break
 		}
-
 		path = fmt.Sprintf("%s.%d", strings.TrimRight(path, ".1234567890"), i)
 		i++
 	}
-
 	return path, os.WriteFile(path, data, 0644)
-
 }
 
 func makeFilepath(prefix, requestURL string) (string, error) {
@@ -227,123 +201,94 @@ func makeFilepath(prefix, requestURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	requestPath := u.EscapedPath()
 	if requestPath == "/" {
 		requestPath = "/index"
 	}
-
 	savePath := fmt.Sprintf("%s/%s%s", prefix, u.Hostname(), requestPath)
-
 	re := regexp.MustCompile("[^a-zA-Z0-9_.%/-]")
 	savePath = re.ReplaceAllString(savePath, "-")
-
 	// remove multiple dashes in a row
 	re = regexp.MustCompile("-+")
 	savePath = re.ReplaceAllString(savePath, "-")
-
 	// remove multiple slashes in a row
 	re = regexp.MustCompile("/+")
 	savePath = re.ReplaceAllString(savePath, "/")
-
 	// we shouldn't see any, but remove any double-dots just in case
 	re = regexp.MustCompile("\\.\\.")
 	savePath = re.ReplaceAllString(savePath, "-")
-
 	savePath = strings.TrimSuffix(savePath, "/")
-
 	return savePath, nil
-
 }
 
 func saveMeta(path string, parentURL string, ev *fetch.EventRequestPaused, postData string) error {
-
 	b := &bytes.Buffer{}
-
 	fmt.Fprintf(b, "url: %s\n", ev.Request.URL)
 	fmt.Fprintf(b, "parent: %s\n", parentURL)
 	fmt.Fprintf(b, "method: %s\n", ev.Request.Method)
 	fmt.Fprintf(b, "type: %s\n", ev.ResourceType)
-
 	b.WriteRune('\n')
-
 	for k, v := range ev.Request.Headers {
 		fmt.Fprintf(b, "> %s: %s\n", k, v)
 	}
-
 	if postData != "" {
 		fmt.Fprintf(b, "\n%s\n", postData)
 	}
-
 	b.WriteRune('\n')
-
 	for _, h := range ev.ResponseHeaders {
 		fmt.Fprintf(b, "< %s: %s\n", h.Name, h.Value)
 	}
-
 	return os.WriteFile(path, b.Bytes(), 0644)
 }
 
 func shouldSave(ev *fetch.EventRequestPaused, requestURL string, opts options) bool {
-
 	contentType := "unknown"
 	for _, h := range ev.ResponseHeaders {
 		if strings.ToLower(h.Name) == "content-type" {
 			contentType = strings.ToLower(h.Value)
 		}
 	}
-
 	for _, i := range opts.includes {
 		if strings.Contains(contentType, strings.ToLower(i)) {
 			break
 		}
 		return false
 	}
-
 	for _, e := range opts.excludes {
 		if strings.Contains(contentType, strings.ToLower(e)) {
 			return false
 		}
 	}
-
 	var domain string
 	if u, err := url.Parse(requestURL); err == nil {
 		domain = u.Hostname()
 	}
-
 	var subRequestDomain string
 	if u, err := url.Parse(ev.Request.URL); err == nil {
 		subRequestDomain = u.Hostname()
 	}
-
 	if opts.thirdPartyOnly {
 		return isThirdParty(domain, subRequestDomain)
 	}
-
 	// you might be thinking "wait, what if opts.thirdPartyOnly and
 	// opts.noThirdParty are both true?!". We check in main() that
 	// is not the case so we should be all good here (:
 	if opts.noThirdParty {
 		return !isThirdParty(domain, subRequestDomain)
 	}
-
 	return true
 }
 
 func makeListener(ctx context.Context, requestURL string, opts options) func(interface{}) {
-
 	return func(ev interface{}) {
 		if ev, ok := ev.(*fetch.EventRequestPaused); ok {
-
 			go func() {
-
 				contentType := "unknown"
 				for _, h := range ev.ResponseHeaders {
 					if strings.ToLower(h.Name) == "content-type" {
 						contentType = strings.ToLower(h.Value)
 					}
 				}
-
 				if !shouldSave(ev, requestURL, opts) {
 					err := chromedp.Run(ctx, fetch.ContinueRequest(ev.RequestID))
 					if err != nil {
@@ -351,7 +296,6 @@ func makeListener(ctx context.Context, requestURL string, opts options) func(int
 					}
 					return
 				}
-
 				err := chromedp.Run(
 					ctx,
 					chromedp.ActionFunc(func(ctx context.Context) error {
@@ -361,13 +305,11 @@ func makeListener(ctx context.Context, requestURL string, opts options) func(int
 							// otherwise the ContinueRequest does not run
 							return nil
 						}
-
 						path, err := saveResponse(ev.Request.URL, data, opts.output, opts.overwrite)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "failed to save response data for %s: %s\n", ev.Request.URL, err)
 							return nil
 						}
-
 						var postData string
 						if ev.Request.HasPostData {
 							if ev.NetworkID == "" {
@@ -380,22 +322,18 @@ func makeListener(ctx context.Context, requestURL string, opts options) func(int
 								}
 							}
 						}
-
 						// save the headers etc in a separate file
 						err = saveMeta(path+".meta", requestURL, ev, postData)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "failed to save response meta data for %s: %s\n", ev.Request.URL, err)
 							return nil
 						}
-
 						// Log the request
 						fmt.Printf("%s %s %d %s\n", ev.Request.Method, ev.Request.URL, ev.ResponseStatusCode, contentType)
-
 						return nil
 					}),
 					fetch.ContinueRequest(ev.RequestID),
 				)
-
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "continue request err: %s\n", err)
 				}
@@ -410,12 +348,10 @@ func isThirdParty(base, sub string) bool {
 	if err != nil {
 		return false
 	}
-
 	sub, err = publicsuffix.EffectiveTLDPlusOne(sub)
 	if err != nil {
 		return false
 	}
-
 	return base != sub
 }
 
@@ -429,4 +365,3 @@ func (l *listArg) Set(val string) error {
 func (h listArg) String() string {
 	return "string"
 }
-
