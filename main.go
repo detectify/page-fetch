@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/fetch"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"golang.org/x/net/publicsuffix"
 )
@@ -110,14 +111,14 @@ func main() {
 		copts = append(copts, chromedp.ProxyServer(opts.proxy))
 	}
 
-	// bypass chrome headless detection
+	// bypass chrome headless detection (updated flags and UA)
 	copts = append(copts,
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0"),
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"),
 		chromedp.WindowSize(1920, 1080),
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
-		chromedp.Headless,
-		chromedp.DisableGPU)
+		chromedp.Flag("headless", "new"),  // Use new headless mode
+	)
 
 	ectx, ecancel := chromedp.NewExecAllocator(context.Background(), copts...)
 	defer ecancel()
@@ -158,7 +159,7 @@ func main() {
 				var jsOutput interface{}
 				err := chromedp.Run(
 					ctx,
-					fetch.Enable().WithPatterns([]*fetch.RequestPattern{{RequestStage: fetch.RequestStageResponse}}),
+					fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "*", RequestStage: fetch.RequestStageResponse}}),
 					chromedp.Navigate(requestURL),
 					chromedp.EvaluateAsDevTools(jsCode, &jsOutput),
 				)
@@ -255,7 +256,7 @@ func makeFilepath(prefix, requestURL string) (string, error) {
 
 }
 
-func saveMeta(path string, parentURL string, ev *fetch.EventRequestPaused) error {
+func saveMeta(path string, parentURL string, ev *fetch.EventRequestPaused, postData string) error {
 
 	b := &bytes.Buffer{}
 
@@ -270,8 +271,8 @@ func saveMeta(path string, parentURL string, ev *fetch.EventRequestPaused) error
 		fmt.Fprintf(b, "> %s: %s\n", k, v)
 	}
 
-	if ev.Request.PostData != "" {
-		fmt.Fprintf(b, "\n%s\n", ev.Request.PostData)
+	if postData != "" {
+		fmt.Fprintf(b, "\n%s\n", postData)
 	}
 
 	b.WriteRune('\n')
@@ -367,8 +368,21 @@ func makeListener(ctx context.Context, requestURL string, opts options) func(int
 							return nil
 						}
 
+						var postData string
+						if ev.Request.HasPostData {
+							if ev.NetworkID == "" {
+								fmt.Fprintf(os.Stderr, "has post data but no network ID for %s\n", ev.Request.URL)
+							} else {
+								postData, err = network.GetRequestPostData(ev.NetworkID).Do(ctx)
+								if err != nil {
+									fmt.Fprintf(os.Stderr, "failed to get post data for %s: %s\n", ev.Request.URL, err)
+									postData = ""
+								}
+							}
+						}
+
 						// save the headers etc in a separate file
-						err = saveMeta(path+".meta", requestURL, ev)
+						err = saveMeta(path+".meta", requestURL, ev, postData)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "failed to save response meta data for %s: %s\n", ev.Request.URL, err)
 							return nil
@@ -415,3 +429,4 @@ func (l *listArg) Set(val string) error {
 func (h listArg) String() string {
 	return "string"
 }
+
